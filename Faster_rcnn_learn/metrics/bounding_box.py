@@ -13,7 +13,7 @@ from metrics.general_utils import(
 
 logger: logging.Logger=logging.getLogger(__name__)
 
-class Boundingbox:
+class BoundingBox:
     def __init__(
             self,
             image_name:str,
@@ -153,4 +153,109 @@ class Boundingbox:
         return (self._x2-self._x+1)*(self._y2-self._y+1)
     
     def get_coordinates_type(self):
-        
+        return self._type_coordinates
+    
+    def get_bb_type(self):
+        return self._bb_type
+    
+    def __str__(self):
+        abs_bb_xywh=self.get_absolute_bounding_box(format=BBFormat.XYWH)
+        abs_bb_xyx2y2=self.get_absolute_bounding_box(format=BBFormat.XYX2Y2)
+        area=self.get_area()
+        return(
+            f"image name: {self._image_name}\n"
+            f"image size: {self.get_image_size()}\n"
+            f"class: {self._class_id}\n"
+            f"bb (XYWH): {abs_bb_xywh}\n"
+            f"bb (X1Y1X2Y2): {abs_bb_xyx2y2}\n"
+            f"area: {area}\n"
+            f"bb_type: {self._bb_type}"
+        )
+    
+    def __eq__(self,other):
+        if not isinstance(other, BoundingBox):
+            return False
+        return str(self)==str(other)
+
+    def __repr__(self):
+        abs_bb_xywh = self.get_absolute_bounding_box(format=BBFormat.XYWH)
+        abs_bb_xyx2y2 = self.get_absolute_bounding_box(format=BBFormat.XYX2Y2)
+        area=self.get_area()
+        return f"{self._bb_type}(bb (XYWH): {abs_bb_xywh}, bb (X1Y1X2Y2): {abs_bb_xyx2y2},area: {area}), class: {self._class_id})"
+    
+    @staticmethod
+    def iou(box_a,box_b):
+        coords_a = box_a.get_absolute_bounding_box(format=BBFormat.XYX2Y2)
+        coords_b = box_b.get_absolute_bounding_box(format=BBFormat.XYX2Y2)
+        if BoundingBox.has_intersection_area(coords_a,coords_b)is False:
+            return 0
+        inter_area=BoundingBox.get_intersection_area(coords_a,coords_b)
+        union=BoundingBox.get_union_areas(box_a,box_b,inter_area=inter_area)
+        iou=inter_area/union
+        assert iou>=0
+        return iou
+    
+    @staticmethod
+    def have_intersection(box_a,box_b):
+        if isinstance(box_a,BoundingBox):
+            box_a=box_a.get_absolute_bounding_box(BBFormat.XYX2Y2)
+        if isinstance(box_b,BoundingBox):
+            box_b=box_b.get_absolute_bounding_box(BBFormat.XYX2Y2)
+        if box_a[0]>box_b[2]:
+            return False
+        if box_b[0]>box_a[2]:
+            return False
+        if box_a[3]<box_b[1]:
+            return False
+        if box_a[1]>box_b[3]:
+            return False
+        return True
+    
+    @staticmethod
+    def get_intersection_area(box_a,box_b):
+        if isinstance(box_a,BoundingBox):
+            box_a=box_a.get_absolute_bounding_box(BBFormat.XYX2Y2)
+        if isinstance(box_b,BoundingBox):
+            box_b=box_b.get_absolute_bounding_box(BBFormat.XYX2Y2)
+        x_a=max(box_a[0],box_b[0])
+        y_a=max(box_a[1],box_b[1])
+        x_b=min(box_a[2],box_b[2])
+        y_b=min(box_a[3],box_b[3])
+
+        return (x_b-x_a+1)*(y_b-y_a+1)
+    
+    @staticmethod
+    def get_union_areas(box_a,box_b,inter_area=None):
+        area_a=box_a.get_area()
+        area_b=box_b.get_area()
+        if inter_area is None:
+            inter_area=BoundingBox.get_intersection_area(box_a,box_b)
+        return float(area_a+area_b-inter_area)
+    
+    @staticmethod
+    def get_amount_bounding_box_all_classes(bounding_boxes,reverse=False):
+        classes=list(set([bb._class_id for bb in bounding_boxes]))
+        ret={}
+        for c in classes:
+            ret[c]=len(BoundingBox.get_bounding_box_by_class(bounding_boxes,c))
+        ret={
+            k:v for k,v in sorted(ret.items(),key=lambda item:item[1],reverse=reverse)
+        }
+        return ret
+
+    @staticmethod
+    def get_bounding_box_by_class(bounding_boxes,class_id):
+        return [bb for bb in bounding_boxes if bb.get_class_id()==class_id]
+    
+    @staticmethod
+    def get_bounding_box_by_image_name(bounding_boxes,image_name):
+        return [bb for bb in bounding_boxes if bb.get_image_name()==image_name]
+    
+    @staticmethod
+    def get_total_images(bounding_boxes):
+        return len(list(set([bb.get_image_name() for bb in bounding_boxes])))
+    
+    @staticmethod
+    def get_average_area(bounding_boxes):
+        areas=[bb.get_area() for bb in bounding_boxes]
+        return sum(areas)/len(areas)
